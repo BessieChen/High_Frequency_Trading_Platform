@@ -1,0 +1,9 @@
+appid,simnow_client_test
+authcode,0000000000000000
+product,simnow
+brokerId,9999
+userId,159599
+passwd,leon1222
+contract,ni2102
+MarketFront,tcp://180.168.146.187:10111
+TradeFront,tcp://180.168.146.187:10101
