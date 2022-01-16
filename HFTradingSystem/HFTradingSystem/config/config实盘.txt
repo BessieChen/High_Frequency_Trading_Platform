@@ -1,0 +1,9 @@
+appid,client_yxljf_v1.0
+authcode,O2NLPII85O6ADAAN
+product,qdhf
+brokerId,8888
+userId,911358
+passwd,Leon1222
+contract,c2101
+MarketFront,tcp://101.231.3.125:42213
+TradeFront,tcp://101.231.3.125:42205

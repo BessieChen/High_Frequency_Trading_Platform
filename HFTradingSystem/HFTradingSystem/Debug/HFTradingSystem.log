@@ -1,0 +1,11 @@
+﻿  main.cpp
+C:\Users\Administrator\从0到1搭建ctp交易系统\chapter2\HFTradingSystem\HFTradingSystem\main.cpp(74,4): warning C4102: “std”: 未引用的标签
+  MdSpi.cpp
+  mystruct.cpp
+  Strategy.cpp
+  TdSpi.cpp
+  正在生成代码...
+  HFTradingSystem.vcxproj -> C:\Users\Administrator\从0到1搭建ctp交易系统\chapter2\HFTradingSystem\HFTradingSystem\bin\HFTradingSystem.exe
+  .\ThostTraderApi\thostmduserapi_se.dll
+  .\ThostTraderApi\thosttraderapi_se.dll
+  已复制         2 个文件。

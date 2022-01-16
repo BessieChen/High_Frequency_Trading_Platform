@@ -1,0 +1,191 @@
+1. ctp系统架构 
+	我们主要涉及:
+			交易前置 
+			行情服务 
+		其他都是后台, 和我们没有关系 
+		交易api/行情api:
+			上期技术提供给我们的公开接口
+	api接口文档清单:
+		1. 行情部分 Market data
+			1. 核心头文件
+				ThostFtdcMdApi.h
+			2. 动态链接库, 静态链接库: 支持穿透式监管
+				thostmduserapi_se.dll
+				thostmduserapi_se.lib
+		2. 交易部分 Trader 
+			1. 核心文件 
+				ThostFtdcTraderApi.h
+			2. 动态链接库, 静态链接库: 支持穿透式监管
+				thosttraderapi_se.dll
+				thosttraderapi_se.lib
+		3. 数据结构 
+			ThostFtdvUserApiStruct.h 
+		4. 数据类型 
+			ThostFtdcUserApiDataType.h 
+		5. 所有可能的错误信息 
+			error.dtd 
+			error.xml 
+		6. 终端信息采集
+			WinDataCollect.dll
+			WinDataCollect.lib
+	命名规则 
+		1. 请求
+			 Req 
+			 	ReqUserLogin
+		2. 响应 
+			OnRsp 
+				OnRspUserLogin: 回调函数 
+		3. 查询 
+			ReqQry 
+				ReqQryInstrument
+		4. 查询请求的响应 
+			OnRspQry 
+				OOnRspQryInstrument
+		5. 回报
+			OnRtn 
+				OnRtnOrder: 返回下完单之后状态:是委托还是成交了
+		6. 错误回报
+			OnErrRtn 
+				OnErrRtnOrderInsert 
+	接口类:
+		Api 和 Spi 
+			Api: 调用这个类就好了 
+			Spi: 实现Api的虚函数 
+		CTP:
+			CThostFrdcTraderApi 
+				apiObj 
+			CThostTfdcTraderSpi 
+				CUstomizedTraderSpi 
+					spiObj 
+	初始化的过程:
+		1. 行情 
+			1. 创建 行情 实例 
+			2. 创建 行情回调 实例 
+			3. 注册 行情回调类 
+			4. 设置行情前置地址 
+			5. 启动线程 
+		2. 交易接口的初始化 
+			1. 创建 交易 实例:{TraderApi 的交易实例}
+			2. 创建 交易回调 的实例
+			3. 注册 交易回调类
+			4. 订阅: 共有流, 私有流 
+			5. 注册交易前置地址 
+			6. 启动线程
+	
+2. 可实盘的高频交易系统-架构解析 
+	1. 项目目录:
+		1. 5个.cpp, 5个 .h 
+			1. main 函数, 启动 api 线程 
+				1. main.cpp 
+				2. main.h 
+			2. 行情回调类 
+				MDspi.cpp 
+				mdspi.h 
+			3. 交易回调类 
+				Traderspi.cpp 
+				traderspi.h 
+			4. 策略类 
+				strategy.cpp 
+				strategy.h 
+			5. 结构体, 函数定义类 
+				mystruct.cpp 
+				mystruct.h 
+		5. 5个目录 
+			存放 api 文件 
+				ThostTraderApi 
+			存放行情流文件 
+				Temp/Mdflow 
+			存放交易流文件 
+				Temp/Tdflow 
+			存放配置文件 
+				Config 
+					很简单的 config.txt 
+						appid 
+						authcode
+						product
+						userId 
+						passwd
+						contract
+						MarketFront
+						TraderFront
+			存放行情数据 
+				Data 
+
+			存放 exe 文件 
+				Bin 
+	2. 系统运作流程 
+		1. 从主函数 main 开始 
+			1. 读取账号信息
+				保存到 map(accoutParam_map)
+			2. 创建行情 api 的实例 
+				1. 行情 
+				1. 创建 行情 实例 
+				2. 创建 行情回调 实例 
+				3. 注册 行情回调类 
+				4. 设置行情前置地址 
+				5. 启动线程 
+			3. 创建交易 api 的实例 
+				注意共有流和私有流的订阅模式 
+					1. 创建 交易 实例:{TraderApi 的交易实例}
+					2. 创建 交易回调 的实例
+					3. 注册 交易回调类
+					4. 订阅: 共有流, 私有流 
+					5. 注册交易前置地址 
+					6. 启动线程
+			4. 创建策略类实例 
+			5. 启动交易 api 线程 
+				初始化: 包括穿透验证 + 查询操作 
+				1. 会有交易的回调 
+				2. 授权 + 回调 
+				4. 登录 + 回调
+					都是一个请求 + 一个回调
+				6. 继续:
+					确认下单 + 回调 
+					请求查询订单 + 回调 
+					请求查询成交 + 回调 
+					查询投资者的持仓明细 + 回调 
+					查询账户的资金情况 + 回调 
+					查询投资者的持仓 Position + 回调  
+					查询所有的期货合约 +回调
+			6. 启动行情 api 线程 
+				连接 + 回调
+				登录 + 回调 
+				订阅合约信息{订阅行情} + 回调 
+					最后把策略类的 Ontick 写在 订阅订阅里面
+			7. 故事:
+				1. 行情自动推送, 通过行情api,将行情传送给策略类 
+				2. 策略类进行逻辑计算: 产生"开仓,平仓撤单"的信号 
+				3. 把信号传递给 交易api 执行
+				4. 产生的交易结果, 通过回调函数自动返回
+					交易api将结果传回给策略类, 更新相关信息 
+				行情继续推送, 重复直至收盘 
+			8. 启动AI交互线程 
+			9. 等待行情,交易,AI线程最后退出 
+3. 穿透监管测试
+	1. 和柜台连接, 会调用回调函数: OnFrontConnected() 
+		打印版本号等信息, 并调用认证 ReqAuthenticate() 
+	2. 认证 ReqAuthenticate() 
+			复制认证的信息, 其中注意 nRequestID 需要自增, 否则会出现报单错误 
+	3. 如果认证成功, 会调用回调函数 OnRspAuthenticate() 
+		我们可以通过柜台传递给我们的参数 pRspInfo 来获知是否验证成功
+		成功之后, 请求登录 ReqUserLogin() 
+4. 穿透监管测试的常见错误
+	通过实盘的配置, 测试了:
+		当 appid, userid, brokerid, authcode 出错, 柜台会提示什么错误信息
+5. 请求账户登录和结算单确认:
+	1. 项目是多线程的{多个策略在跑}, 多线程的话, 就要对 nRequestID 进行加锁保护. 之后记得将之前关于 nRequestID++ 的操作修改.  
+	2. 实现请求登录函数 ReqUserLogin() 
+		登录时候需要的字段, 保存在 CThostFtdReqUserLoginField 结构中. 
+	技术点:
+		1. 加锁用mutex,或者lock_guard{在析构的时候解锁}
+
+
+
+
+
+
+
+
+
+
+
