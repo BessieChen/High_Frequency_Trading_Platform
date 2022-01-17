@@ -11,16 +11,16 @@
 using namespace std;
 
 
-std::map<std::string, std::string> accountConfig_map;//卤拢麓忙脮脣禄搂脨脜脧垄碌脛map
+std::map<std::string, std::string> accountConfig_map;//保存账户信息的map
 
-Strategy* g_strategy;//虏脽脗脭脌脿脰赂脮毛
+Strategy* g_strategy;//策略类指针
 
-TdSpi* g_pUserTDSpi_AI;//脠芦戮脰碌脛TD禄脴碌梅麓娄脌铆脌脿露脭脧贸拢卢AI陆禄禄楼潞炉脢媒禄谩脫脙碌陆
+TdSpi* g_pUserTDSpi_AI;//全局的TD回调处理类对象，AI交互函数会用到
 
-void  AIThread();//AI脧脽鲁脤潞炉脢媒
+void  AIThread();//AI线程函数
 
 
-//脠芦戮脰碌脛禄楼鲁芒脣酶
+//全局的互斥锁
 std::mutex m_mutex;
 
 void ReadConfigMap(map<std::string, std::string> &accountmap);
@@ -30,15 +30,15 @@ int main()
 {
 	cerr << "---------------------------------------------" << endl;
 	cerr << "---------------------------------------------" << endl;
-	cerr << "------------QD赂脽脝碌陆禄脪脳脧碌脥鲁脝么露炉-----------" << endl;
+	cerr << "------------QD高频交易系统启动-----------" << endl;
 	cerr << "---------------------------------------------" << endl;
 	cerr << "---------------------------------------------" << endl;
 	
 	
-	//-----------------1隆垄露脕脠隆脮脣禄搂脨脜脧垄-------------------
+	//-----------------1、读取账户信息-------------------
 	ReadConfigMap(accountConfig_map);
 
-	//-----------------2隆垄麓麓陆篓脨脨脟茅api潞脥禄脴碌梅脌脿脢碌脌媒------------------------
+	//-----------------2、创建行情api和回调类实例------------------------
 	CThostFtdcMdApi* pUserApi_market = CThostFtdcMdApi::CreateFtdcMdApi("./Temp/Marketflow/");
 	MdSpi* pUserSpi_market = new MdSpi(pUserApi_market);
 	pUserApi_market->RegisterSpi(pUserSpi_market);
@@ -48,34 +48,34 @@ int main()
 	pUserApi_market->RegisterFront(mdFront);
 
 
-	//-----------------3隆垄麓麓陆篓陆禄脪脳api潞脥禄脴碌梅脌脿脢碌脌媒------------------------
+	//-----------------3、创建交易api和回调类实例------------------------
 	CThostFtdcTraderApi* pUserApi_trade = CThostFtdcTraderApi::CreateFtdcTraderApi("./Temp/Tradeflow/");
 	TdSpi * pUserSpi_trade = new TdSpi(pUserApi_trade, pUserApi_market, pUserSpi_market);
-	pUserApi_trade->RegisterSpi(pUserSpi_trade);//api脳垄虏谩禄脴碌梅脌脿
+	pUserApi_trade->RegisterSpi(pUserSpi_trade);//api注册回调类
 
-	pUserApi_trade->SubscribePublicTopic(THOST_TERT_RESTART);//露漏脭脛鹿芦脫脨脕梅
-	pUserApi_trade->SubscribePrivateTopic(THOST_TERT_QUICK);//露漏脭脛脣陆脫脨脕梅
+	pUserApi_trade->SubscribePublicTopic(THOST_TERT_RESTART);//订阅公有流
+	pUserApi_trade->SubscribePrivateTopic(THOST_TERT_QUICK);//订阅私有流
 
 
 	char tdFront[50];
 	strcpy(tdFront, accountConfig_map["TradeFront"].c_str());
 	pUserApi_trade->RegisterFront(tdFront);
 
-	//-----------------4隆垄麓麓陆篓虏脽脗脭脌脿脢碌脌媒-----------------------
+	//-----------------4、创建策略类实例-----------------------
 	
 	g_strategy = new Strategy(pUserSpi_trade);
 
 
-	//-----------------5隆垄脝么露炉陆禄脪脳脧脽鲁脤-----------------------
-	pUserApi_trade->Init();//脝么露炉脧脽鲁脤
+	//-----------------5、启动交易线程-----------------------
+	pUserApi_trade->Init();//启动线程
 
 
-	//-----------------6隆垄麓麓陆篓AI脧脽鲁脤-----------------------
+	//-----------------6、创建AI线程-----------------------
 std:thread th1(AIThread);
 
 
 
-	//-----------------7隆垄碌脠麓媒脧脽鲁脤脥脣鲁枚-----------------------
+	//-----------------7、等待线程退出-----------------------
 	pUserApi_market->Join();
 	pUserApi_trade->Join();
 	th1.join();
@@ -100,7 +100,7 @@ void ReadConfigMap(map<std::string, std::string>& accountmap)
 	char dataLine[256];
 	if (!file1)
 	{
-		cout << "脜盲脰脙脦脛录镁虏禄麓忙脭脷" << endl;
+		cout << "配置文件不存在" << endl;
 		return ;
 	}
 	else
@@ -133,7 +133,7 @@ void ReadConfigMap(map<std::string, std::string>& accountmap)
 						break;
 					}
 				}
-			}//for陆谩脢酶
+			}//for结束
 			accountConfig_map.insert(make_pair(fieldKey, fieldValve));
 
 

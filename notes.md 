@@ -176,8 +176,29 @@
 	1. 项目是多线程的{多个策略在跑}, 多线程的话, 就要对 nRequestID 进行加锁保护. 之后记得将之前关于 nRequestID++ 的操作修改.  
 	2. 实现请求登录函数 ReqUserLogin() 
 		登录时候需要的字段, 保存在 CThostFtdReqUserLoginField 结构中. 
+	3. 实现请求登录响应 TdSpi.cpp: OnRspUserLogin()
+		如果登录成功, 将会调用 OnRspUserLogin()回调函数
+		在这个过程中, 我们会获得 frontId 和 sessionId, 以及报单引用 orderRef.
+			注意报单引用是递增的. 如果==或者<之前的报单引用会提示重复报单. 
+		实现显示错误的函数 IsErrorRspInfo() 其中错误信息保存在 pRspInfo 参数中 
+	4. 实现:确认结算单 ReqSettlementInfoConfirm()
+		当登录没有问题, 就开始确认结算单. 
+		目前是只填写了 m_BrokerId, m_UserId 
+		实现 确认结算单的回调函数 OnRspSettlementInfoConfirm() 
+			bIsLast: 是否是最后一条信息 
+			如果没有错误, 就会打印确认日期 
+			接下来, 查询报单, 这个过程中让本线程 sleep()3秒, 为了让柜台有足够的响应时间  
+		接下来就是查询报单内容. ReqQryOrder() 
 	技术点:
 		1. 加锁用mutex,或者lock_guard{在析构的时候解锁}
+		2. 注意命名规范! b开头代表bool, p开头代表pointer, m_n代表成员变量且是int型 
+		3. 将string拷贝到 const char*, 需要将 string转化为char*, 使用 c_str() 
+		4. 让线程休眠, 不建议使用 Sleep() 
+			因为 Sleep() 是win自带的, 不利于之后跨os的兼容
+			所以休眠使用 std::this_thread::sleep_for() 
+6. 
+
+	
 
 
 

@@ -1,4 +1,5 @@
 #pragma once
+#define _CRT_SECURE_NO_WARNINGS
 #include"ThostFtdcTraderApi.h"
 #include"MdSpi.h"//mdspi.h已经包含了下面的头文件
 #include"mystruct.h"
@@ -121,13 +122,16 @@ public:
 
 	//更新订单状态
 	bool UpdateOrder(CThostFtdcOrderField* pOrder);
+	protected:
+		int GetNextRequestID();
+		
 private:
 	CThostFtdcTraderApi* m_pUserTDApi_trade;
 	CThostFtdcMdApi* m_pUserMDApi_trade;
 	MdSpi* m_pUserMDSpi_trade;
 	CThostFtdcReqUserLoginField* loginField;
 	CThostFtdcReqAuthenticateField* authField;
-	int  nRequestID;
+	int  m_nNextRequestID;
 	std::vector<CThostFtdcOrderField*> orderList;
 	std::vector<CThostFtdcTradeField*> tradeList;
 	std::vector<CThostFtdcTradeField*> tradeList_NotClosed_Long;
@@ -161,7 +165,8 @@ private:
 	int m_nFrontID;
 	int m_nSessionID;
 	bool m_AllowOpen;
-
+	char orderRef[13];
+	//char tradingDate[13];
 	TThostFtdcDateType	m_cTradingDay;
 
 };
