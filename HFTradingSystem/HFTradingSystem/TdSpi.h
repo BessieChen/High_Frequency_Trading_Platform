@@ -132,12 +132,21 @@ private:
 	CThostFtdcReqUserLoginField* loginField;
 	CThostFtdcReqAuthenticateField* authField;
 	int  m_nNextRequestID;
+	//当天的所有报单
 	std::vector<CThostFtdcOrderField*> orderList;
+	//当天的所有成交
 	std::vector<CThostFtdcTradeField*> tradeList;
+	//未平仓多单持仓明细
 	std::vector<CThostFtdcTradeField*> tradeList_NotClosed_Long;
+	//未平仓的空单持仓明细
 	std::vector<CThostFtdcTradeField*> tradeList_NotClosed_Short;
+
+
 	std::vector<std::string> subscribe_inst_vec;
+	
+	//持仓信息结构体的map
 	std::map<std::string, position_field*> m_position_field_map;
+
 	std::map<std::string, CThostFtdcInstrumentField*> m_inst_field_map;
 
 

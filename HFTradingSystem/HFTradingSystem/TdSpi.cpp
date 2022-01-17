@@ -159,8 +159,8 @@ void TdSpi::ReqQryOrder()
 	//strcpy(QryOrderField.BrokerID, "0000");
 	strcpy(QryOrderField.BrokerID, m_BrokerId.c_str());
 	//InvestorID有误
-	strcpy(QryOrderField.InvestorID, "666666");
-	//strcpy(QryOrderField.InvestorID, m_UserId.c_str());
+	//strcpy(QryOrderField.InvestorID, "666666");
+	strcpy(QryOrderField.InvestorID, m_UserId.c_str());
 	//调用api的ReqQryOrder
 	m_pUserTDApi_trade->ReqQryOrder(&QryOrderField, GetNextRequestID());
 
@@ -199,10 +199,7 @@ void TdSpi::OnRspQryOrder(CThostFtdcOrderField* pOrder, CThostFtdcRspInfoField* 
 				}
 				cerr << "---------------打印报单完成---------------" << endl;
 				cerr << "查询报单正常，将首次查询成交" << endl;
-				//线程休眠3秒，让ctp柜台有充足的响应时间，然后再进行查询操作
-				std::chrono::milliseconds sleepDuration(3 * 1000);
-				std::this_thread::sleep_for(sleepDuration);
-				ReqQryTrade();
+				
 
 			}
 		}
@@ -212,12 +209,15 @@ void TdSpi::OnRspQryOrder(CThostFtdcOrderField* pOrder, CThostFtdcRspInfoField* 
 	{
 		m_QryOrder_Once = false;
 		cerr << "查询报单出错，或没有成交，将首次查询成交" << endl;
+		
+	}
+	if (bIsLast)
+	{
 		//线程休眠3秒，让ctp柜台有充足的响应时间，然后再进行查询操作
 		std::chrono::milliseconds sleepDuration(3 * 1000);
 		std::this_thread::sleep_for(sleepDuration);
 		ReqQryTrade();
 	}
-	
 }
 
 
@@ -267,10 +267,7 @@ void TdSpi::OnRspQryTrade(CThostFtdcTradeField* pTrade, CThostFtdcRspInfoField* 
 				}
 				cerr << "---------------打印成交完成---------------" << endl;
 				cerr << "查询报单正常，将首次查询持仓明细" << endl;
-				//线程休眠3秒，让ctp柜台有充足的响应时间，然后再进行查询操作
-				std::chrono::milliseconds sleepDuration(3 * 1000);
-				std::this_thread::sleep_for(sleepDuration);
-				ReqQryInvestorPositionDetail();
+				
 			}
 			
 
@@ -281,6 +278,10 @@ void TdSpi::OnRspQryTrade(CThostFtdcTradeField* pTrade, CThostFtdcRspInfoField* 
 	{
 		m_QryOrder_Once = false;
 		cerr << "查询报单出错，或没有成交，将首次查询成交" << endl;
+		
+	}
+	if (bIsLast)
+	{
 		//线程休眠3秒，让ctp柜台有充足的响应时间，然后再进行查询操作
 		std::chrono::milliseconds sleepDuration(3 * 1000);
 		std::this_thread::sleep_for(sleepDuration);
@@ -291,16 +292,320 @@ void TdSpi::OnRspQryTrade(CThostFtdcTradeField* pTrade, CThostFtdcRspInfoField* 
 }
 void TdSpi::ReqQryInvestorPositionDetail()
 {
+	CThostFtdcQryInvestorPositionDetailField pdField;//创建
+	memset(&pdField, 0, sizeof(pdField));//初始化为0
+	strcpy(pdField.BrokerID, m_BrokerId.c_str());
+	//strcpy(pdField.BrokerID, "0000");
+	//strcpy(pdField.InstrumentID, m_InstId.c_str());
+
+
+	strcpy(pdField.InvestorID, m_UserId.c_str());
+
+	//strcpy(pdField.InvestorID, "0000");
+	//调用交易api的ReqQryInvestorPositionDetail
+	m_pUserTDApi_trade->ReqQryInvestorPositionDetail(&pdField,GetNextRequestID());
+}
+
+void TdSpi::OnRspQryInvestorPositionDetail(CThostFtdcInvestorPositionDetailField* pField, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
+{
+	cerr << "请求查询投资者持仓明细回报响应：OnRspQryInvestorPositionDetail" << " pInvestorPositionDetail " << pField << endl;
+	if (!IsErrorRspInfo(pRspInfo) && pField)
+	{
+		//所有合约
+		if (m_QryDetail_Once == true)
+		{
+			//对于所有合约，只保存未平仓的，不保存已经平仓的
+			//将程序启动前的持仓记录保存到未平仓容器tradeList_NotClosed_Long和tradeList_NotClosed_Short
+			//使用结构体CThostFtdcTradeField，因为它有时间字段，而CThostFtdcInvestorPositionDetailField没有时间字段
+			CThostFtdcTradeField* trade = new CThostFtdcTradeField();//创建CThostFtdcTradeField *
+			
+			strcpy(trade->InvestorID, pField->InvestorID);///投资者代码
+			strcpy(trade->InstrumentID, pField->InstrumentID);///合约代码
+			strcpy(trade->ExchangeID, pField->ExchangeID);///交易所代码
+			trade->Direction = pField->Direction;//买卖方向
+			trade->Price = pField->OpenPrice;//价格
+			trade->Volume = pField->Volume;//数量
+			strcpy(trade->TradeDate, pField->OpenDate);//成交日期
+			strcpy(trade->TradeID, pField->TradeID);//*********成交编号********
+			if (pField->Volume > 0)//筛选未平仓合约
+			{
+				if (trade->Direction == '0')//买入方向
+					tradeList_NotClosed_Long.push_back(trade);
+				else if (trade->Direction == '1')//卖出方向
+					tradeList_NotClosed_Short.push_back(trade);
+			}
+			//收集持仓合约的代码
+			bool find_instId = false;
+			for (unsigned int i = 0; i < subscribe_inst_vec.size(); i++)
+			{
+				if (strcmp(subscribe_inst_vec[i].c_str(), trade->InstrumentID) == 0)//合约已存在，已订阅
+				{
+					find_instId = true;
+					break;
+				}
+			}
+			if (!find_instId)//合约未订阅过
+			{
+				cerr << "---------------------------------------该持仓合约未订阅过，加入订阅列表" << endl;
+				subscribe_inst_vec.push_back(trade->InstrumentID);
+			}
+
+		}
+		//输出所有合约的持仓明细，要在这边进行下一步的查询ReqQryTradingAccount()
+		if (bIsLast)
+		{
+			m_QryDetail_Once = false;
+			//持仓的合约
+			string inst_holding;
+			//
+			for (unsigned int i = 0; i < subscribe_inst_vec.size(); i++)
+				inst_holding = inst_holding + subscribe_inst_vec[i] + ",";
+			//"IF2102,IF2103,"
+
+			inst_holding = inst_holding.substr(0, inst_holding.length() - 1);//去掉最后的逗号，从位置0开始，选取length-1个字符
+			//"IF2102,IF2103"
+
+			cerr << "程序启动前的持仓列表:" << inst_holding << ",inst_holding.length()=" << inst_holding.length()
+				<< ",subscribe_inst_vec.size()=" << subscribe_inst_vec.size() << endl;
+
+			if (inst_holding.length() > 0)
+				m_pUserMDSpi_trade->setInstIdList_Position_MD(inst_holding);//设置程序启动前的留仓，即需要订阅行情的合约
+
+			//size代表笔数，而不是手数
+			cerr << "账户所有合约未平仓单笔数（下单笔数，一笔可以对应多手）,多单:" << tradeList_NotClosed_Long.size()
+				<< "空单：" << tradeList_NotClosed_Short.size() << endl;
+
+
+			cerr << "-----------------------------------------未平仓多单明细打印start" << endl;
+			for (vector<CThostFtdcTradeField*>::iterator iter = tradeList_NotClosed_Long.begin(); iter != tradeList_NotClosed_Long.end(); iter++)
+			{
+				cerr << "BrokerID:" << (*iter)->BrokerID << endl << "InvestorID:" << (*iter)->InvestorID << endl
+					<< "InstrumentID:" << (*iter)->InstrumentID << endl << "Direction:" << (*iter)->Direction << endl
+					<< "OpenPrice:" << (*iter)->Price << endl << "Volume:" << (*iter)->Volume << endl
+					<< "TradeDate:" << (*iter)->TradeDate << endl << "TradeID:" << (*iter)->TradeID << endl;
+			}
+
+			cerr << "-----------------------------------------未平仓空单明细打印start" << endl;
+			for (vector<CThostFtdcTradeField*>::iterator iter = tradeList_NotClosed_Short.begin(); iter != tradeList_NotClosed_Short.end(); iter++)
+			{
+				cerr << "BrokerID:" << (*iter)->BrokerID << endl << "InvestorID:" << (*iter)->InvestorID << endl
+					<< "InstrumentID:" << (*iter)->InstrumentID << endl << "Direction:" << (*iter)->Direction << endl
+					<< "OpenPrice:" << (*iter)->Price << endl << "Volume:" << (*iter)->Volume << endl
+					<< "TradeDate:" << (*iter)->TradeDate << endl << "TradeID:" << (*iter)->TradeID << endl;
+			}
+			cerr << "---------------打印持仓明细完成---------------" << endl;
+			cerr << "查询持仓明细正常，将首次查询账户资金信息" << endl;
+		}
+		
+	}
+	else
+	{
+		if (m_QryDetail_Once == true)
+		{
+			m_QryDetail_Once = false;
+			cerr << "查询持仓明细出错，或没有持仓明细，将首次查询账户资金" << endl;
+		}
+	}
+	if (bIsLast)
+	{
+		//线程休眠3秒，让ctp柜台有充足的响应时间，然后再进行查询操作
+		std::chrono::milliseconds sleepDuration(3 * 1000);
+		std::this_thread::sleep_for(sleepDuration);
+		ReqQryTradingAccount();
+	}
+	
 }
 
 void TdSpi::ReqQryTradingAccount()
 {
+	CThostFtdcQryTradingAccountField req;//创建req的结构体对象
+	memset(&req, 0, sizeof(req));//初始化
+	//错误的brokerID
+	//strcpy(req.BrokerID, "8888");
+
+
+	strcpy(req.BrokerID, m_BrokerId.c_str());
+
+
+	strcpy(req.InvestorID, m_UserId.c_str());
+	//strcpy(req.InvestorID, "666666");
+	//调用交易api的ReqQryTradingAccount
+	int iResult = m_pUserTDApi_trade->ReqQryTradingAccount(&req, GetNextRequestID());
+	cerr << "--->>> 请求查询资金账户: " << ((iResult == 0) ? "成功" : "失败") << endl;
 }
+
+void TdSpi::OnRspQryTradingAccount(CThostFtdcTradingAccountField* pTradingAccount, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
+{
+	cerr << "请求查询投资者资金账户回报响应：OnRspQryTradingAccount" << " pTradingAccount " << pTradingAccount << endl;
+	if (!IsErrorRspInfo(pRspInfo) && pTradingAccount)
+	{
+
+		cerr << "投资者编号：" << pTradingAccount->AccountID
+			<< "静态权益：期初权益" << pTradingAccount->PreBalance
+			<< "动态权益：期货结算准备金" << pTradingAccount->Balance
+			<< "可用资金：" << pTradingAccount->Available
+			<< "可取资金：" << pTradingAccount->WithdrawQuota
+			<< "当前保证金总额：" << pTradingAccount->CurrMargin
+			<< "平仓盈亏：" << pTradingAccount->CloseProfit
+			<< "持仓盈亏：" << pTradingAccount->PositionProfit
+			<< "手续费：" << pTradingAccount->Commission
+			<< "冻结保证金：" << pTradingAccount->FrozenCash
+			<< endl;
+		//所有合约
+		if (m_QryTradingAccount_Once == true)
+		{
+			m_QryTradingAccount_Once = false;
+		}
+
+		cerr << "---------------打印资金账户明细完成---------------" << endl;
+		cerr << "查询资金账户正常，将首次查询投资者持仓信息" << endl;
+	}
+	else
+	{
+		if (m_QryTradingAccount_Once == true)
+		{
+			m_QryTradingAccount_Once = false;
+			cerr << "查询资金账户出错，将首次查询投资者持仓" << endl;
+		}
+	}
+	//线程休眠3秒，让ctp柜台有充足的响应时间，然后再进行查询操作
+	std::chrono::milliseconds sleepDuration(3 * 1000);
+	std::this_thread::sleep_for(sleepDuration);
+	ReqQryInvestorPosition_All();
+}
+
 
 void TdSpi::ReqQryInvestorPosition_All()
 {
-}
+	CThostFtdcQryInvestorPositionField req;//创建req
+	memset(&req, 0, sizeof(req));//初始化为0
 
+	//strcpy(req.BrokerID, "8888");
+	strcpy(req.BrokerID, m_BrokerId.c_str());
+	//strcpy(req.InvestorID, m_UserId.c_str());
+	strcpy(req.InvestorID, "0000");
+	//合约为空，则代表查询所有合约的持仓，这个和req为空是一样的
+	strcpy(req.InstrumentID, m_InstId.c_str());
+	//调用交易api的ReqQryInvestorPosition
+	int iResult = m_pUserTDApi_trade->ReqQryInvestorPosition(&req, GetNextRequestID());//req为空，代表查询所有合约的持仓
+	cerr << "--->>> 请求查询投资者持仓: " << ((iResult == 0) ? "成功" : "失败") << endl;
+}
+void TdSpi::OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* pInvestorPosition,
+	CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast) {
+	//cerr << "请求查询持仓响应：OnRspQryInvestorPosition " << ",pInvestorPosition  " << pInvestorPosition << endl;
+	if (!IsErrorRspInfo(pRspInfo) && pInvestorPosition)
+	{
+
+		//账户下所有合约
+		if (m_QryPosition_Once == true)
+		{
+			cerr << "请求查询持仓响应：OnRspQryInvestorPosition " << " pInvestorPosition:  "
+				<< pInvestorPosition << endl;//会包括已经平仓没有持仓的记录
+			cerr << "响应  | 合约 " << pInvestorPosition->InstrumentID << endl
+				<< " 持仓多空方向 " << pInvestorPosition->PosiDirection << endl//2多3空
+			   // << " 映射后的方向 " << MapDirection(pInvestorPosition->PosiDirection-2,false) << endl
+				<< " 总持仓 " << pInvestorPosition->Position << endl
+				<< " 今日持仓 " << pInvestorPosition->TodayPosition << endl
+				<< " 上日持仓 " << pInvestorPosition->YdPosition << endl
+				<< " 保证金 " << pInvestorPosition->UseMargin << endl
+				<< " 持仓成本 " << pInvestorPosition->PositionCost << endl
+				<< " 开仓量 " << pInvestorPosition->OpenVolume << endl
+				<< " 平仓量 " << pInvestorPosition->CloseVolume << endl
+				<< " 持仓日期 " << pInvestorPosition->TradingDay << endl
+				<< " 平仓盈亏（按昨结） " << pInvestorPosition->CloseProfitByDate << endl
+				<< " 持仓盈亏 " << pInvestorPosition->PositionProfit << endl
+				<< " 逐日盯市平仓盈亏（按昨结） " << pInvestorPosition->CloseProfitByDate << endl//快期中显示的是这个值
+				<< " 逐笔对冲平仓盈亏（按开平合约） " << pInvestorPosition->CloseProfitByTrade << endl//在交易中比较有意义
+				<< endl;
+
+
+			//构造合约对应持仓明细信息的结构体map
+			bool  find_trade_message_map = false;
+			for (map<string, position_field*>::iterator iter = m_position_field_map.begin(); iter != m_position_field_map.end(); iter++)
+			{
+				if (strcmp((iter->first).c_str(), pInvestorPosition->InstrumentID) == 0)//合约已存在
+				{
+					find_trade_message_map = true;
+					break;
+				}
+			}
+			if (!find_trade_message_map)//合约不存在
+			{
+				cerr << "-----------------------没有这个合约，需要构造交易信息结构体" << endl;
+				position_field* p_trade_message = new position_field();
+				p_trade_message->instId = pInvestorPosition->InstrumentID;
+				m_position_field_map.insert(pair<string, position_field*>(pInvestorPosition->InstrumentID, p_trade_message));
+			}
+			if (pInvestorPosition->PosiDirection == '2')//多单
+			{
+				//昨仓和今仓一次返回
+				//获取该合约的持仓明细信息结构体 second; m_map[键]
+				position_field* p_tdm = m_position_field_map[pInvestorPosition->InstrumentID];
+				p_tdm->LongPosition = p_tdm->LongPosition + pInvestorPosition->Position;
+				p_tdm->TodayLongPosition = p_tdm->TodayLongPosition + pInvestorPosition->TodayPosition;
+				p_tdm->YdLongPosition = p_tdm->LongPosition - p_tdm->TodayLongPosition;
+				p_tdm->LongCloseProfit = p_tdm->LongCloseProfit + pInvestorPosition->CloseProfit;
+				p_tdm->LongPositionProfit = p_tdm->LongPositionProfit + pInvestorPosition->PositionProfit;
+			}
+			else if (pInvestorPosition->PosiDirection == '3')//空单
+			{
+				//昨仓和今仓一次返回
+
+				position_field* p_tdm = m_position_field_map[pInvestorPosition->InstrumentID];
+				p_tdm->ShortPosition = p_tdm->ShortPosition + pInvestorPosition->Position;
+				p_tdm->TodayShortPosition = p_tdm->TodayShortPosition + pInvestorPosition->TodayPosition;
+				p_tdm->YdShortPosition = p_tdm->ShortPosition - p_tdm->TodayShortPosition;
+				p_tdm->ShortCloseProfit = p_tdm->ShortCloseProfit + pInvestorPosition->CloseProfit;
+				p_tdm->ShortPositionProfit = p_tdm->ShortPositionProfit + pInvestorPosition->PositionProfit;
+			}
+
+			if (bIsLast)
+			{
+				m_QryPosition_Once = false;
+				for (map<string, position_field*>::iterator iter = m_position_field_map.begin(); iter != m_position_field_map.end(); iter++)
+				{
+					cerr << "合约代码：" << iter->second->instId << endl
+						<< "多单持仓量：" << iter->second->LongPosition << endl
+						<< "空单持仓量：" << iter->second->ShortPosition << endl
+						<< "多单今日持仓：" << iter->second->TodayLongPosition << endl
+						<< "多单上日持仓：" << iter->second->YdLongPosition << endl
+						<< "空单今日持仓：" << iter->second->TodayShortPosition << endl
+						<< "空单上日持仓：" << iter->second->YdShortPosition << endl
+						<< "多单浮动盈亏：" << iter->second->LongPositionProfit << endl
+						<< "多单平仓盈亏：" << iter->second->LongCloseProfit << endl
+						<< "空单浮动盈亏：" << iter->second->ShortPositionProfit << endl
+						<< "空单平仓盈亏：" << iter->second->ShortCloseProfit << endl;
+
+					//账户平仓盈亏
+					m_CloseProfit = m_CloseProfit + iter->second->LongCloseProfit + iter->second->ShortCloseProfit;
+					//账户浮动盈亏
+					m_OpenProfit = m_OpenProfit + iter->second->LongPositionProfit + iter->second->ShortPositionProfit;
+				}
+
+				cerr << "账户浮动盈亏 " << m_OpenProfit << endl;
+				cerr << "账户平仓盈亏 " << m_CloseProfit << endl;
+			}//bisLast
+
+
+		}
+		cerr << "---------------查询投资者持仓完成---------------" << endl;
+		cerr << "查询持仓正常，首次查询所有合约代码" << endl;
+	}
+	else
+	{
+		if (m_QryPosition_Once == true)
+			m_QryPosition_Once = false;
+		cerr << "查询投资者持仓出错，或没有持仓，首次查询所有合约" << endl;
+	}
+	if (bIsLast)
+	{
+		//线程休眠3秒，让ctp柜台有充足的响应时间，然后再进行查询操作
+		std::chrono::milliseconds sleepDuration(10 * 1000);
+		std::this_thread::sleep_for(sleepDuration);
+		ReqQryInstrumetAll();
+	}
+	
+}
 void TdSpi::ReqQryInvestorPosition()
 {
 }
@@ -371,9 +676,7 @@ void TdSpi::OnRspQryDepthMarketData(CThostFtdcDepthMarketDataField* pDepthMarket
 {
 }
 
-void TdSpi::OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* pInvestorPosition, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
-{
-}
+
 
 void TdSpi::OnRspQryInstrument(CThostFtdcInstrumentField* pInstrument, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
 {
@@ -381,13 +684,9 @@ void TdSpi::OnRspQryInstrument(CThostFtdcInstrumentField* pInstrument, CThostFtd
 
 
 
-void TdSpi::OnRspQryInvestorPositionDetail(CThostFtdcInvestorPositionDetailField* pField, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
-{
-}
 
-void TdSpi::OnRspQryTradingAccount(CThostFtdcTradingAccountField* pTradingAccount, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
-{
-}
+
+
 
 void TdSpi::OnRtnOrder(CThostFtdcOrderField* pOrder)
 {

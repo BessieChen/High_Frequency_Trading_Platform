@@ -215,7 +215,7 @@
 				2. pOrder 包括了很多的 frontId, sessionId
 				3. m_QryOrder_Once 用于标记是否是第一次查询报单. 
 					在构造函数中, 初始化为true, 意思是: 是第一次查询报单
-				4. 逻辑:
+				4. 逻辑: 每次运行程序, 我们只会查询一次, 所以 m_QryXXX_Once 设置为false之后, 不会再查询了
 					本次是第一次查询, m_QryOrder_Once == true, 第一次查询, 有3笔订单的报单:
 						1. 第1笔订单: new 一个Order结构体并插入 orderList
 						2. 第2笔订单: new 一个Order结构体并插入 orderList
@@ -247,8 +247,128 @@
 			如果 brokerid, investorid 有错误. 不会报错. 但是 pOrder == nullptr 
 		2. ReqQryTrade() 	
 			如果 brokerid, investorid 有错误. 不会报错. 但是 pTrade == nullptr
-
-
+7. 获取投资者持仓明细
+	1. 主要是实现 ReqQryInvestorPostionDetail() 
+		1. 定义并初始化 CThostFtdInvestorPositionDetailField 结构体 
+		2. 通过 柜台api 的 ReqQryInvestorPostionDetail() 将信息保存在结构体中 
+	2. 查看柜台返回的信息是在 OnRspQryInvestorPostionDetail() 
+		1. 没有平仓的多单: tradeList_NotClosed_Long: 是 vector<CThostFtdTradeField*> 所以里面的元素都是已经成交的. 
+		2. 没有平仓的空单: tradeList_NotClosed_Short
+			对比: CThostFtdTradeField已经成交的. CThostFtdOrderField只是报单{有可能成交了}
+		逻辑:
+			1. 首先, 假设有n笔成交的合约{平仓和未平仓都有}, 就会调用n次 OnRspQryInvestorPostionDetail()
+			2. 对于所有成交的合约, 我们筛掉{舍弃}平仓的合约, 挑出来未平仓的合约 
+			3. 对于所有成交的合约, 无论是否平仓, 如果之前没有订阅, 添加到订阅的列表中. 注意订阅操作是在 MdSpi.cpp 中完成的, 所以订阅列表 MdSpi 的类中有一份, TdSpi 的类中有一份
+			4. 对于最后一次调用 OnRspQryInvestorPostionDetail(), 参数 bIsLast == true 
+				最后一次调用 OnRspQryInvestorPostionDetail()的时候, 我们将打印所有收集到的合约信息
+					并且设置 m_QryXXX_Once == false, 因为现在可以说是一天开盘前, 我们要知道自己的持仓情况. 
+					所以只需要今日只需获取一次开盘前的持仓. 
+				最后一次调用 OnRspQryInvestorPostionDetail()的时候, 我们将进行下一步 账户资金信息 的获取 
+	3. 获取投资者持仓明细时候的常见错误:
+		如果 brokerid, investorid 有错误
+			CThostFtdInvestorPositioonDetailField, CThostFtdRspInfoField 2个结构体为空
+			但是回调函数 OnRspQryInvestorPostionDetail()不会报错 
+8. 账户资金信息获取
+	1. 主要是实现 ReqQryTradingAccount() 
+		1. 定义并初始化 CThostFtdcQryTradingAccountField 结构体 
+		2. 通过 柜台api 的 ReqQryTradingAccount() 将信息保存在结构体中
+	2. 查看柜台返回的信息是在 OnRspQryTradingAccount() 
+		很简单, 直接打印需要的信息, 没有 bIsLast 因为只会调用一次 OnRspQryTradingAccount()
+		接下来就是获取 投资者持仓 
+	3. 常见错误:
+		如果 brokerid, investorid 有错误
+			CThostFtdQryTradingAccountField, CThostFtdcRspInfoField 2个结构体为空
+			但是回调函数 OnRspQryTradingAccount()不会报错
+9. 投资者持仓获取
+	1. 投资者持仓 vs 投资者持仓明细, 非常像!
+		投资者持仓, 例如说明你持有几手
+			注意, 投资者持仓 并不是一个概览
+		投资者持仓明细 说明了每一笔合约的信息 
+	2. 主要是实现 ReqQryInvestorPostion_All() 
+		1. 定义并初始化 CThostFtdcQryInvestorPostionField 结构体 
+		2. 通过 柜台api 的 ReqQryInvestorPostion() 将信息保存在结构体中
+	3. 查看柜台返回的信息是在 OnRspQryInvestorPostion()  
+		0. 过程: 
+			也是有n笔合约就会调用n次回调函数 OnRspQryInvestorPostion(), 其中最后一次调用 bIsLast == true 
+				1. 每次调用 OnRspQryInvestorPostion()时候: 
+					1. 打印 投资者持仓CThostFtdcInvestorPositionField 结构体内容  -> 这对应这一个合约 
+						CThostFtdcInvestorPositionField
+							<< "请求查询持仓响应：" << pInvestorPosition << endl; 	会包括已经平仓没有持仓的记录
+							<< "响应  | 合约 " << InstrumentID << endl
+							<< " 持仓多空方向 " << PosiDirection << endl;		2多3空
+						    << " 映射后的方向 " << MapDirection(PosiDirection-2,false) << endl
+							<< " 总持仓 " << Position << endl
+							<< " 今日持仓 " << TodayPosition << endl
+							<< " 上日持仓 " << YdPosition << endl
+							<< " 保证金 " << UseMargin << endl
+							<< " 持仓成本 " << PositionCost << endl
+							<< " 开仓量 " << OpenVolume << endl
+							<< " 平仓量 " << CloseVolume << endl
+							<< " 持仓日期 " << TradingDay << endl
+							<< " 平仓盈亏（按昨结） " << CloseProfitByDate << endl
+							<< " 持仓盈亏 " << PositionProfit << endl
+							<< " 逐日盯市平仓盈亏（按昨结） " << CloseProfitByDate << endl//快期中显示的是这个值
+							<< " 逐笔对冲平仓盈亏（按开平合约） " << CloseProfitByTrade << endl//在交易中比较有意义
+					2. 看这个合约{CThostFtdcInvestorPositionField结构体}是否存在在我们的映射 m_position_field_map {成员变量}中
+						如果没有就插入
+						其中, m_position_field_map 是一个映射 map<string, position_field*> 
+							key: 合约id {InstrumentID}
+							value: position_field* 
+								其中 position_field结构体:
+								    cout << "合约代码：" << instId << endl
+									cout << "多单持仓量：" << LongPosition << endl
+									cout << "空单持仓量：" << ShortPosition << endl
+									cout << "多单今日持仓：" << TodayLongPosition << endl
+									cout << "多单上日持仓：" << YdLongPosition << endl
+									cout << "空单今日持仓：" << TodayShortPosition << endl
+									cout << "空单上日持仓：" << YdShortPosition << endl
+									cout << "多单浮动盈亏：" << LongPositionProfit << endl
+									cout << "多单平仓盈亏：" << LongCloseProfit << endl
+									cout << "空单浮动盈亏：" << ShortPositionProfit << endl
+									cout << "空单平仓盈亏：" << ShortCloseProfit << endl;
+					3. 接着将这个新的合约的信息, 整合到 m_position_field_map 的对应位置. 
+						我的理解, 你可能xx天之前买了合约 IS1082, 那时候 m_position_field_map[IS1082] 已经对应了一堆信息了 
+						今天你又买了合约 IS1082, 今天的信息需要追加到  m_position_field_map[IS1082] 中 
+					4. 如果该合约 IS1082 是: 
+						1. 多单 
+							position_field* p_tdm = m_position_field_map[InstrumentID]; -> 找出xx天之前买了合约 IS1082 的信息  
+							p_tdm->LongPosition += Position;			
+								本单{多单}持仓量{计算公式是 += 增量}
+							p_tdm->TodayLongPosition += TodayPosition;
+								本单{多单}今日持仓{计算公式是 += 增量}
+							p_tdm->YdLongPosition = p_tdm->LongPosition - p_tdm->TodayLongPosition;
+								本单{多单}上日持仓 = 本单总持仓 - 本单今日持仓
+							p_tdm->LongCloseProfit += CloseProfit;
+								平仓盈亏				  0,因为第一天还没有交易
+							p_tdm->LongPositionProfit += PositionProfit;
+								持仓盈亏						例如:第一天 -8220
+						2. 空单 
+							position_field* p_tdm = m_position_field_map[InstrumentID];
+							p_tdm->ShortPosition += Position;
+								本单{空单}持仓量{计算公式是 += 增量}
+							p_tdm->TodayShortPosition += TodayPosition;
+								本单{空单}今日持仓{计算公式是 += 增量}
+							p_tdm->YdShortPosition = p_tdm->ShortPosition - p_tdm->TodayShortPosition;
+								本单{空单}上日持仓 = 本单总持仓 - 本单今日持仓
+							p_tdm->ShortCloseProfit += CloseProfit;
+								平仓盈亏				  0,因为还没有交易
+							p_tdm->ShortPositionProfit += PositionProfit;
+								持仓盈亏					
+				2. 调用了n次回调函数, 遍历的时候, 也要计算总的账户盈亏:
+					m_CloseProfit += sum(LongCloseProfit + ShortCloseProfit);
+						账户平仓盈亏 += sum(多头的平仓盈亏 + 空头的平仓盈亏), 这里的sum是指遍历每个多单和空单 
+					m_OpenProfit += sum(LongPositionProfit + ShortPositionProfit);
+						账户浮动盈亏 也叫 账户持仓盈亏 += sum(多头的持仓盈亏 + 空头的持仓盈亏), 这里的sum是指遍历每个多单和空单 
+	4. 常见错误
+		1. 合约为空，则代表查询 所有合约 的持仓
+			strcpy(req.InstrumentID, ''); -> 合约为空
+		2. brokerid是错的: strcpy(req.BrokerID, "8888");
+			不会提示错误{pRspInfo = 0, 即没有错误}
+			也不会返回持仓信息{因为bIsLast第一次就是true,即 pInvestorPosition == nullptr}
+		3. investorid是错的: strcpy(req.InvestorID, "0000");
+			不会提示错误{pRspInfo = 0, 即没有错误}
+			也不会返回持仓信息{因为bIsLast第一次就是true,即 pInvestorPosition == nullptr}
+	5. 如果调试时间太长, 交易断线, 则需要重连
 
 
 

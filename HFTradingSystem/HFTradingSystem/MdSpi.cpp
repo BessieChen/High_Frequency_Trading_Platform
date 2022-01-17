@@ -48,8 +48,13 @@ void MdSpi::OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* pDepthMarketDat
 {
 }
 
+//"IF2102,IF2103",string类型转换为你char *
 void MdSpi::setInstIdList_Position_MD(std::string& inst_holding)
 {
+	m_InstIdList_Position_MD = new char[inst_holding.length()];
+
+	memcpy(m_InstIdList_Position_MD, inst_holding.c_str(), inst_holding.length());
+
 }
 
 void MdSpi::set_InstIdList_All(std::string& inst_all)
