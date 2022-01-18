@@ -1,7 +1,9 @@
 #pragma once
+#define _CRT_SECURE_NO_WARNINGS
 #include<string>
 #include"main.h"
 #include "ThostFtdcMdApi.h"
+#include<map>
 //using namespace std;
 class MdSpi :public CThostFtdcMdSpi {
 public:
@@ -38,6 +40,7 @@ public:
 	//"IF2101,IF2102,IF2103" 
 	//订阅全部合约
 	void set_InstIdList_All(std::string& inst_all);
+	int GetNextRequestID();
 
 private:
 	CThostFtdcMdApi* mdapi;

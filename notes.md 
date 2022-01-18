@@ -166,6 +166,7 @@
 		打印版本号等信息, 并调用认证 ReqAuthenticate() 
 	2. 认证 ReqAuthenticate() 
 			复制认证的信息, 其中注意 nRequestID 需要自增, 否则会出现报单错误 
+			注意! nRequestID 代表你请求某个信息, 你可以请求很多种类型的信息, 不管是哪一种, 只要请求了一次, nRequestID就++
 	3. 如果认证成功, 会调用回调函数 OnRspAuthenticate() 
 		我们可以通过柜台传递给我们的参数 pRspInfo 来获知是否验证成功
 		成功之后, 请求登录 ReqUserLogin() 
@@ -369,16 +370,156 @@
 			不会提示错误{pRspInfo = 0, 即没有错误}
 			也不会返回持仓信息{因为bIsLast第一次就是true,即 pInvestorPosition == nullptr}
 	5. 如果调试时间太长, 交易断线, 则需要重连
-
-
-
-
-
-
-	
-
-
-
+10. 合约信息获取
+	1. 合约信息的map 	
+		用于保存所有的期货合约的map: m_inst_field_map 
+			key: string{合约id}
+			value: CThostFtdcInstrumentField* {是 ThostFtdcUserApiStruct.h 中定义的} 
+				包括: 合约代码, 交割年份/月, 市价单最大/小下单量, 限价单最大/小下单量, 合约数量乘数, 最小变动价位...
+	2. 查询单个期货合约, 即实现 ReqQryInstrument(), 注意不是ReqQryInvestorPosition()
+		1. 定义并初始化 CThostFtdcInstrumentField 结构体 
+		2. 通过 柜台api 的 ReqQryInstrument() 将信息保存在结构体中 
+		3. 其实查询 单个 合约和查询 所有 合约, 都是调用 柜台api 的 ReqQryInstrument() 
+			但是查询单个合约, 一定要填写 InstrumentID, 如果 InstrumentID 为空就是查询所有合约
+		4. 查看柜台返回的信息是在 OnRspQryInstrument() 
+	3. 查询所有的合约, 实现 ReqQryInstrumentAll() 
+		1. 定义并初始化 CThostFtdcInstrumentField 结构体 
+		2. 通过 柜台api 的 ReqQryInstrument() 将信息保存在结构体中 
+		3. 查看柜台返回的信息是在 OnRspQryInstrument() 
+			注意, 这里说的所有合约, 是市场上的所有合约, 而不仅仅是我们{关注的,交易的,成交的} 
+			OnRspQryInstrument()函数中 ShowInstMessage()会打印所有的合约 
+			OnRspQryInstrument()的作用: 
+				0. 假设市场上有n个合约,那么会调用n次 OnRspQryInstrument()
+				1. 将市场上所有的合约,存储在 m_inst_field_map 映射中 
+				2. 如果当前的合约 == 我们策略中的合约{策略中的合约在 config.txt 中的 contracts}, 就打印该合约
+					strcmp(pInstrument->InstrumentID, m_InstId.c_str())
+						pInstrument->InstrumentID: 当前OnRspQryInstrument()遍历到的合约
+						m_InstId.c_str(): config.txt 中的 contracts
+				3. 当最后一次调用 OnRspQryInstrument(), 即 bIsLast == true 时:
+					将所有的合约,放在策略类中,也放在MD类中
+						1. 策略类
+							g_strategy->set_instPostion_map_stgy(m_inst_field_map);
+						2. MD类: 保存全市场合约, 即订阅全部合约
+							m_pUserMDSpi_trade->set_InstIdList_All(m_Instrument_All); 
+							相当于以后做策略的时候, 我们需要先订阅全部的合约
+					最后, 启动行情api: 
+						m_pUserMDApi_trade->Init(); 这是接下来的内容 
+	技术点: 
+		1. TdSpi.cpp 需要用到 main.cpp 中定义的全局变量 Strategy* g_strategy 
+			所以 TdSpi.cpp 需要 extern Strategy* g_strategy; 
+			并且 TdSpi.cpp 需要 #include "strategy.h" 
+		2. 调试过程中, 窗口可能很长时间没有输出
+			可能是因为不在交易时间, 可以更换其他 simnow, 例如7*24的config. 具体更换ip地址
+			或者,使用实盘的,出于个人安全原因,未展示
+11. 行情Spi初始化与行情登录
+	0. 当 OnRspQryInstrument()执行 m_pUserMDApi_trade->Init(); 的时候, 会跳转到 MDSpi.cpp 
+	1. 首先, 我们需要完成 MDSpi 的构造函数
+	2. 实现 MDSpi 的几个函数: 
+		1. GetNextRequestID(), 和 TdSpi.cpp 中的一模一样
+		2. OnFrontConnected(), 开始前置连接
+		3. ReqUserLogin(), 请求登录 
+			如果登陆成功, 会跳转到回调函数 OnRspUserLogin() 
+			另外, 在 ReqUserLogin() 中, 如果 brokerid,userid,passwd填写错误: 
+				不会报错, errorcode==0
+				能够跳转到回调函数 OnRspUserLogin()
+	技术点:
+		1. main.cpp 可以重命名全局的 g_nRequestID, 即整个项目的变量名 nRequestID 都被修改为 g_nRequestID
+		2. TDSpi.cpp, MDSpi.cpp里面使用 extern 来操作 main.cpp 中的 g_nRequestID 
+12. 订阅行情 
+	1. 实现 MDSpi.cpp 中的 OnRspUserLogin()
+		订阅行情:
+			0. 订阅行情之前
+				持仓合约{subscribe_invest_vec}, 需要放到全局 main.cpp
+					TDSpi.cpp 中 extern subscribe_invest_vec
+			1. 订阅2种合约:
+				1. 订阅: 策略中存储的合约, m_InstId: 策略中存储的合约
+					InsertInstToSubVec(m_InstId);
+						InsertInstToSubVec()的作用: 将 m_InstId 插入到vector{即subscribe_inst_vec, 持仓的合约}里
+				2. 订阅: 持仓的合约, std::vector<std::string> subscribe_inst_vec: 持仓的合约
+			3. 订阅的动作在这里完成: SubscribeMarketData()
+					注意 SubscribeMarketData() 有几个同名函数:
+						void SubscribeMarketData(char* instIdList); -> 用于订阅"策略"中的合约, char instIdList[] = "IF2012,IF2101,IF2103"
+						void SubscribeMarketData(std::string instIdList);  ->string instIdList = "IF2012,IF2101,IF2103";
+						void SubscribeMarketData(std::vector<std::string> &subscribeVec); -> 用于订阅"持仓"的合约
+					但是 柜台api 的 mdapi->SubscribeMarketData() 需要的是 char** 
+						所以我们 Spi 的3个同名 SubscribeMarketData() 最后都是调用 mdapi->SubscribeMarketData()
+					当调用成功, 柜台会调用回调函数 OnRspSubMarketData(), 我们可以打印 pRspInfo 中的信息
+					之后柜台还会调用回调函数 OnRtnDepthMarketData(), 我们在里面可以打印详细的 深度行情信息: 
+						交易日, 合约代码, 最新价, 上次结算价
+						申买价一, 申买量一
+						申卖价一, 申卖量一
+						今收盘价, 当日均价{模拟软件中的黄线部分}
+						本次结算价格, 成交金额, 持仓量
+	技术点: 
+		1. 将char*中以逗号,分割. 每个元素放入 vector<char*>中 
+			void SubscribeMarketData(char* instIdList) 例如 char instIdList[] = "IF2012,IF2101,IF2103"
+			{
+				vector<char*>list;
+					
+				char* token = strtok(instIdList, ",");
+				while (token)
+				{
+					list.push_back(token);
+					token = strtok(nullptr, ",");
+				}
+				unsigned int len = list.size();
+				char** ppInstrument = new char* [len];
+				for (unsigned i = 0; i < len; i++)
+				{
+					ppInstrument[i] = list[i];		//指针赋值，没有新分配内存空间
+				}
+				int nRet = mdapi->SubscribeMarketData(ppInstrument, len); //调用行情api的SubscribeMarketData
+				
+				delete[] ppInstrument; 最后只需要释放 ppInstrument, 不需要释放 ppInstrument[i ]
+			}
+				
+				strtok()用来将字符串分割成一个个片段。
+					参数s指向欲分割的字符串，参数delim则为分割字符串中包含的所有字符。
+						当strtok()在参数s的字符串中发现参数delim中包含的分割字符时, 则会将该字符改为\0 字符。
+						例如把逗号改为 \0, 所以我们可以发现内存监控台里面, 代表逗号的32{好像是32}, 改为了00
+					在第一次调用时，strtok()必需给予参数s字符串，往后的调用则将参数s设置成nullptr。
+						每次调用成功则返回指向被分割出片段的指针 
+		2. 将string类型的所有合约转换为char *类型
+			SubscribeMarketData(std::string instIdList)
+			{
+				int len = instIdList.size();
+				char* pInst = new char[len+1];		//分配len+1个char的空间，否则会报错
+				strcpy(pInst, instIdList.c_str());
+				pInst[len] = '\0';					//不要忘记加上结尾标志
+				SubscribeMarketData(pInst); 		//其实偷了懒, 用了 SubscribeMarketData(char* instIdList)
+				delete[]pInst;
+			}
+			另外一个例子: 将string类型的所有合约转换为char *类型
+				void set_InstIdList_All(std::string& inst_all) 例如 string inst_all = "IF2012,IF2101,IF2103";
+				{
+					
+					int nLen = inst_all.size(); 			//字符串的长度
+					m_InstIdList_all = new char[nLen + 1];	//分配len+1个char的空间，否则会报错
+					strcpy(m_InstIdList_all, inst_all.c_str()); 
+					m_InstIdList_all[nLen] = '\0'; 			//千万记住加上结束标志，重要，否则会出错
+					delete [] m_InstIdList_all;  			//记得释放
+				}
+		3. 将 vector<string> 存为 char**, 即char*数组:
+			void MdSpi::SubscribeMarketData(std::vector<std::string>& subscribeVec)
+			{
+				int nLen = subscribeVec.size();
+				if (nLen > 0)
+				{
+					char** ppInst  = new char * [nLen];
+					for ( int i = 0; i<nLen; i++)
+					{
+						ppInst[i] = new char[31]{ 0 }; -> 记得开辟空间
+						//memcpy(ppInst[i], subscribeVec[i].c_str(), 31);
+						strcpy(ppInst[i], subscribeVec[i].c_str());
+					}
+					int nResult = mdapi->SubscribeMarketData(ppInst, nLen);
+					cerr << "订阅行情 " << (nResult == 0 ? ("成功") : ("失败")) << endl;
+					for (int i = 0; i < nLen; i++) 
+						delete[] ppInst[i];	->释放每个元素对应的内存
+					delete[] ppInst;	->释放new char **
+				}
+					
+			}
 
 
 

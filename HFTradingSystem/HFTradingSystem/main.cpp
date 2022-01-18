@@ -17,6 +17,8 @@ Strategy* g_strategy;//策略类指针
 
 TdSpi* g_pUserTDSpi_AI;//全局的TD回调处理类对象，AI交互函数会用到
 
+int g_nRequestID=0;
+
 void  AIThread();//AI线程函数
 
 

@@ -2,13 +2,16 @@
 #include<map>
 #include<iostream>
 #include<mutex>
+#include"Strategy.h"
 using namespace std;
 
 
 extern std::map<std::string, std::string> accountConfig_map;//保存账户信息的map
 //全局的互斥锁
 extern std::mutex m_mutex;
+extern Strategy* g_strategy;//策略类指针
 
+extern int g_nRequestID;
 
 TdSpi::TdSpi(CThostFtdcTraderApi* tdapi, CThostFtdcMdApi* pUserApi_md, MdSpi* pUserSpi_md):
 	m_pUserTDApi_trade(tdapi), m_pUserMDApi_trade(pUserApi_md), m_pUserMDSpi_trade(pUserSpi_md)
@@ -30,6 +33,7 @@ TdSpi::TdSpi(CThostFtdcTraderApi* tdapi, CThostFtdcMdApi* pUserApi_md, MdSpi* pU
 	m_BrokerId = accountConfig_map["brokerId"];
 	m_UserId = accountConfig_map["userId"];
 	m_Passwd= accountConfig_map["passwd"];
+	m_InstId= accountConfig_map["contract"];
 	m_nNextRequestID=0;
 	m_QryOrder_Once = true;
 
@@ -482,8 +486,8 @@ void TdSpi::ReqQryInvestorPosition_All()
 
 	//strcpy(req.BrokerID, "8888");
 	strcpy(req.BrokerID, m_BrokerId.c_str());
-	//strcpy(req.InvestorID, m_UserId.c_str());
-	strcpy(req.InvestorID, "0000");
+	strcpy(req.InvestorID, m_UserId.c_str());
+	//strcpy(req.InvestorID, "0000");
 	//合约为空，则代表查询所有合约的持仓，这个和req为空是一样的
 	strcpy(req.InstrumentID, m_InstId.c_str());
 	//调用交易api的ReqQryInvestorPosition
@@ -534,6 +538,9 @@ void TdSpi::OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* pInvestorP
 				cerr << "-----------------------没有这个合约，需要构造交易信息结构体" << endl;
 				position_field* p_trade_message = new position_field();
 				p_trade_message->instId = pInvestorPosition->InstrumentID;
+				//构造持仓合约的string
+				m_Inst_Postion += pInvestorPosition->InstrumentID ;
+				m_Inst_Postion += ",";
 				m_position_field_map.insert(pair<string, position_field*>(pInvestorPosition->InstrumentID, p_trade_message));
 			}
 			if (pInvestorPosition->PosiDirection == '2')//多单
@@ -562,6 +569,10 @@ void TdSpi::OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* pInvestorP
 			if (bIsLast)
 			{
 				m_QryPosition_Once = false;
+				m_Inst_Postion = m_Inst_Postion.substr(0, m_Inst_Postion.length() - 1);
+				
+				//m_pUserMDSpi_trade->setInstIdList_Position_MD(m_Inst_Postion);
+				
 				for (map<string, position_field*>::iterator iter = m_position_field_map.begin(); iter != m_position_field_map.end(); iter++)
 				{
 					cerr << "合约代码：" << iter->second->instId << endl
@@ -606,17 +617,121 @@ void TdSpi::OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* pInvestorP
 	}
 	
 }
-void TdSpi::ReqQryInvestorPosition()
+
+
+void TdSpi::ReqQryInvestorPosition(char * pInstrument)
 {
+	CThostFtdcQryInvestorPositionField req;//创建req
+	memset(&req, 0, sizeof(req));//初始化为0
+
+	
+	strcpy(req.BrokerID, m_BrokerId.c_str());
+	strcpy(req.InvestorID, m_UserId.c_str());
+	
+	//合约填写具体的合约代码
+	strcpy(req.InstrumentID, pInstrument);
+	//调用交易api的ReqQryInvestorPosition
+	int iResult = m_pUserTDApi_trade->ReqQryInvestorPosition(&req, GetNextRequestID());//req为空，代表查询所有合约的持仓
+	cerr << "--->>> 请求查询投资者持仓: " << ((iResult == 0) ? "成功" : "失败") << endl;
 }
 
 void TdSpi::ReqQryInstrumetAll()
 {
+	CThostFtdcQryInstrumentField req;//创建req
+	memset(&req, 0, sizeof(req));//初始化为0
+
+
+	//调用交易api的ReqQryInstrument
+	int iResult = m_pUserTDApi_trade->ReqQryInstrument(&req, GetNextRequestID());//req结构体为0，查询所有合约
+	cerr << "--->>> 请求查询合约: " << ((iResult == 0) ? "成功" : "失败") << endl;
 }
 
-void TdSpi::ReqQryInstrumet()
+/// <summary>
+/// 查询单个期货合约
+/// </summary>
+void TdSpi::ReqQryInstrumet(char * pInstrument)
 {
+	CThostFtdcQryInstrumentField req;//创建req
+	memset(&req, 0, sizeof(req));//初始化为0
+	strcpy(req.InstrumentID, pInstrument);//合约填写具体的代码，表示查询该合约的信息
+	//调用交易api的ReqQryInstrument
+	int iResult = m_pUserTDApi_trade->ReqQryInstrument(&req, GetNextRequestID());//
+	cerr << "--->>> 请求查询合约: " << ((iResult == 0) ? "成功" : "失败") << endl;
 }
+
+
+
+void TdSpi::OnRspQryInstrument(CThostFtdcInstrumentField* pInstrument, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
+{
+	//cerr << "请求查询合约响应：OnRspQryInstrument" << ",pInstrument   " << pInstrument->InstrumentID << endl;
+	if (!IsErrorRspInfo(pRspInfo) && pInstrument)
+	{
+
+		//账户下所有合约
+		if (m_QryInstrument_Once == true)
+		{
+			m_Instrument_All = m_Instrument_All + pInstrument->InstrumentID + ",";
+
+			//保存所有合约信息到map
+			CThostFtdcInstrumentField* pInstField = new CThostFtdcInstrumentField();
+			memcpy(pInstField, pInstrument, sizeof(CThostFtdcInstrumentField));
+			m_inst_field_map.insert(pair<string, CThostFtdcInstrumentField*>(pInstrument->InstrumentID, pInstField));
+
+			//策略交易的合约
+			if (strcmp(m_InstId.c_str(), pInstrument->InstrumentID) == 0)
+			{
+				cerr << "响应 | 合约：" << pInstrument->InstrumentID
+					<< "合约名称：" << pInstrument->InstrumentName
+					<< " 合约在交易所代码：" << pInstrument->ExchangeInstID
+					<< " 产品代码：" << pInstrument->ProductID
+					<< " 产品类型：" << pInstrument->ProductClass
+					<< " 多头保证金率：" << pInstrument->LongMarginRatio
+					<< " 空头保证金率：" << pInstrument->ShortMarginRatio
+					<< " 合约数量乘数：" << pInstrument->VolumeMultiple
+					<< " 最小变动价位：" << pInstrument->PriceTick
+					<< " 交易所代码：" << pInstrument->ExchangeID
+					<< " 交割年份：" << pInstrument->DeliveryYear
+					<< " 交割月：" << pInstrument->DeliveryMonth
+					<< " 创建日：" << pInstrument->CreateDate
+					<< " 到期日：" << pInstrument->ExpireDate
+					<< " 上市日：" << pInstrument->OpenDate
+					<< " 开始交割日：" << pInstrument->StartDelivDate
+					<< " 结束交割日：" << pInstrument->EndDelivDate
+					<< " 合约生命周期状态：" << pInstrument->InstLifePhase
+					<< " 当前是否交易：" << pInstrument->IsTrading << endl;
+			}
+
+			if (bIsLast)
+			{
+				m_QryInstrument_Once = false;
+				m_Instrument_All = m_Instrument_All.substr(0, m_Instrument_All.length() - 1);
+				cerr << "m_Instrument_All的大小：" << m_Instrument_All.size() << endl;
+				cerr << "map的大小（合约数量）：" << m_inst_field_map.size() << endl;
+
+				//将持仓合约信息设置到mdspi
+				//m_pUserMDSpi_trade->setInstIdList_Position_MD(m_Inst_Postion);
+
+
+				//将合约信息结构体的map复制到策略类
+				g_strategy->set_instPostion_map_stgy(m_inst_field_map);
+				cerr << "--------------------------输出合约信息map的内容-----------------------" << endl;
+				ShowInstMessage();
+				//保存全市场合约，在TD进行，需要订阅全市场合约行情时再运行
+				m_pUserMDSpi_trade->set_InstIdList_All(m_Instrument_All);
+				cerr << "TD初始化完成，启动MD" << endl;
+				m_pUserMDApi_trade->Init();
+			}
+		}
+	}
+	else
+	{
+		m_QryInstrument_Once = false;
+		cerr << "查询合约失败" << endl;
+	}
+	
+
+}
+
 
 void TdSpi::ReqSettlementInfoConfirm()
 {
@@ -678,11 +793,6 @@ void TdSpi::OnRspQryDepthMarketData(CThostFtdcDepthMarketDataField* pDepthMarket
 
 
 
-void TdSpi::OnRspQryInstrument(CThostFtdcInstrumentField* pInstrument, CThostFtdcRspInfoField* pRspInfo, int nRequestID, bool bIsLast)
-{
-}
-
-
 
 
 
@@ -734,9 +844,39 @@ int TdSpi::GetNextRequestID()
 	//在析构的时候使用解锁m_mutex.unlock();
 std:lock_guard<mutex> m_lock(m_mutex);
 	
-	int nNextID = m_nNextRequestID++;
+	int nNextID = g_nRequestID++;
 
-	return m_nNextRequestID;
+	return g_nRequestID;
+}
+
+void TdSpi::ShowInstMessage()
+{
+	//std::map<std::string, CThostFtdcInstrumentField*> m_inst_field_map;
+
+	for (std::map<std::string, CThostFtdcInstrumentField*>::iterator iter = m_inst_field_map.begin(); iter != m_inst_field_map.end(); iter++)
+	{
+		CThostFtdcInstrumentField* pInstrument = iter->second;
+		
+		cerr << "响应 | 合约：" << pInstrument->InstrumentID
+			<< "合约名称：" << pInstrument->InstrumentName
+			<< " 合约在交易所代码：" << pInstrument->ExchangeInstID
+			<< " 产品代码：" << pInstrument->ProductID
+			<< " 产品类型：" << pInstrument->ProductClass
+			<< " 多头保证金率：" << pInstrument->LongMarginRatio
+			<< " 空头保证金率：" << pInstrument->ShortMarginRatio
+			<< " 合约数量乘数：" << pInstrument->VolumeMultiple
+			<< " 最小变动价位：" << pInstrument->PriceTick
+			<< " 交易所代码：" << pInstrument->ExchangeID
+			<< " 交割年份：" << pInstrument->DeliveryYear
+			<< " 交割月：" << pInstrument->DeliveryMonth
+			<< " 创建日：" << pInstrument->CreateDate
+			<< " 到期日：" << pInstrument->ExpireDate
+			<< " 上市日：" << pInstrument->OpenDate
+			<< " 开始交割日：" << pInstrument->StartDelivDate
+			<< " 结束交割日：" << pInstrument->EndDelivDate
+			<< " 合约生命周期状态：" << pInstrument->InstLifePhase
+			<< " 当前是否交易：" << pInstrument->IsTrading << endl;
+	}
 }
 
 void TdSpi::PlaceOrder(const char* pszCode, const char* ExchangeID, int nDirection, int nOpenClose, int nVolume, double fPrice)

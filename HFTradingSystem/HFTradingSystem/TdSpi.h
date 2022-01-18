@@ -33,9 +33,9 @@ public:
 
 	void ReqQryTradingAccount();
 	void ReqQryInvestorPosition_All();
-	void ReqQryInvestorPosition();
+	void ReqQryInvestorPosition(char* pInstrument);
 	void ReqQryInstrumetAll();
-	void ReqQryInstrumet();
+	void ReqQryInstrumet(char * pInstrument);
 
 	///请求确认结算单
 	void ReqSettlementInfoConfirm();
@@ -124,6 +124,7 @@ public:
 	bool UpdateOrder(CThostFtdcOrderField* pOrder);
 	protected:
 		int GetNextRequestID();
+	void	ShowInstMessage();
 		
 private:
 	CThostFtdcTraderApi* m_pUserTDApi_trade;
@@ -141,12 +142,13 @@ private:
 	//未平仓的空单持仓明细
 	std::vector<CThostFtdcTradeField*> tradeList_NotClosed_Short;
 
-
+	//持仓合约
 	std::vector<std::string> subscribe_inst_vec;
 	
 	//持仓信息结构体的map
 	std::map<std::string, position_field*> m_position_field_map;
 
+	//用于保存所有期货合约的映射
 	std::map<std::string, CThostFtdcInstrumentField*> m_inst_field_map;
 
 
@@ -169,6 +171,7 @@ private:
 	std::string m_UserId;
 	std::string m_Passwd;
 	std::string m_InstId;
+	std::string m_Inst_Postion;
 	std::string m_Instrument_All;
 
 	int m_nFrontID;
