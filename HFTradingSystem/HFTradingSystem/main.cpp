@@ -25,6 +25,9 @@ void  AIThread();//AI线程函数
 //全局的互斥锁
 std::mutex m_mutex;
 
+//全局的持仓合约
+std::vector<std::string> subscribe_inst_vec;
+
 void ReadConfigMap(map<std::string, std::string> &accountmap);
 
 int main()
@@ -85,6 +88,10 @@ std:thread th1(AIThread);
 
 	pUserApi_market->Release();
 	pUserApi_trade->Release();
+	
+	
+	//需要销毁subscribe_inst_vec
+	
 	return 0;
 }
 

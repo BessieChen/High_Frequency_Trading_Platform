@@ -79,7 +79,7 @@ void MdSpi::OnRspUserLogin(CThostFtdcRspUserLoginField* pRspUserLogin, CThostFtd
 		cerr << "尝试订阅行情" << endl;
 
 		////插入合约到订阅列表
-		InsertInstToSubVec(m_InstId); //将策略中的合约添加到订阅列表 
+		InsertInstToSubVec(m_InstId);
 		
 		//订阅行情
 		//if (subscribe_inst_vec.size() > 0)
@@ -92,7 +92,7 @@ void MdSpi::OnRspUserLogin(CThostFtdcRspUserLoginField* pRspUserLogin, CThostFtd
 		//}
 
 		
-		//SubscribeMarketData("IF2012,IF2101,IF2103"); -> 测试函数 SubscribeMarketData(std::string instIdList)
+		//SubscribeMarketData("IF2012,IF2101,IF2103");
 
 		//订阅“量化策略交易的合约”行情
 		//SubscribeMarketData(m_InstId);
@@ -119,7 +119,6 @@ void MdSpi::OnRspUserLogin(CThostFtdcRspUserLoginField* pRspUserLogin, CThostFtd
 
 		//SubscribeMarketData_All();
 		SubscribeMarketData("IF2101");
-		//因为订阅操作有流量控制, 我们每秒钟不能超过6次调用: 
 		/*SubscribeMarketData("IF2101");
 		SubscribeMarketData("IF2101");
 		SubscribeMarketData("IF2101");
@@ -229,7 +228,7 @@ void MdSpi::SubscribeMarketData_All()
 
 void MdSpi::OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* pDepthMarketData)
 {
-	cout << "===========================================" << endl;
+	/*cout << "===========================================" << endl;
 	cout << "深度行情" << endl;
 	cout << " 交易日:" << pDepthMarketData->TradingDay << endl
 		<< "合约代码:" << pDepthMarketData->InstrumentID << endl
@@ -248,7 +247,7 @@ void MdSpi::OnRtnDepthMarketData(CThostFtdcDepthMarketDataField* pDepthMarketDat
 	<< "当日均价:" << pDepthMarketData->AveragePrice << endl
 	<< "本次结算价格:" << pDepthMarketData->SettlementPrice << endl
 	<< "成交金额:" << pDepthMarketData->Turnover << endl
-	<< "持仓量:" << pDepthMarketData->OpenInterest << endl;
+	<< "持仓量:" << pDepthMarketData->OpenInterest << endl;*/
 }
 
 //"IF2102,IF2103",string类型转换为你char *

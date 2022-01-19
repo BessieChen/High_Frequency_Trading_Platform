@@ -53,3 +53,5 @@ void ReadKbarSeries(std::string fileName, std::vector<Kbar>& kbar_vec);
 
 //保存文件名
 void Save_FileName(std::string path, std::vector<std::string>& fileName_vec);
+
+void StringToCharPP(std::string & str,char *  pp);

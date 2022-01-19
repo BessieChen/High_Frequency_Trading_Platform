@@ -539,9 +539,223 @@
 
 				if (loginField)
 					delete loginField;
-				
-
 			}
+13. 获取保单通知, 并保存报单 
+	1. 报单的结构体: 参考 ThostFtdcUserApiStruct.h
+		///报单
+		struct CThostFtdcOrderField
+		{
+			///经纪公司代码
+			TThostFtdcBrokerIDType	BrokerID;
+			///投资者代码
+			TThostFtdcInvestorIDType	InvestorID;
+			///合约代码
+			TThostFtdcInstrumentIDType	InstrumentID;
+			///报单引用
+			TThostFtdcOrderRefType	OrderRef;
+			///用户代码
+			TThostFtdcUserIDType	UserID;
+			///报单价格条件
+			TThostFtdcOrderPriceTypeType	OrderPriceType;
+			///买卖方向
+			TThostFtdcDirectionType	Direction;
+			///组合开平标志
+			TThostFtdcCombOffsetFlagType	CombOffsetFlag;
+			///组合投机套保标志
+			TThostFtdcCombHedgeFlagType	CombHedgeFlag;
+			///价格
+			TThostFtdcPriceType	LimitPrice;
+			///数量
+			TThostFtdcVolumeType	VolumeTotalOriginal;
+			///有效期类型
+			TThostFtdcTimeConditionType	TimeCondition;
+			///GTD日期
+			TThostFtdcDateType	GTDDate;
+			///成交量类型
+			TThostFtdcVolumeConditionType	VolumeCondition;
+			///最小成交量
+			TThostFtdcVolumeType	MinVolume;
+			///触发条件
+			TThostFtdcContingentConditionType	ContingentCondition;
+			///止损价
+			TThostFtdcPriceType	StopPrice;
+			///强平原因
+			TThostFtdcForceCloseReasonType	ForceCloseReason;
+			///自动挂起标志
+			TThostFtdcBoolType	IsAutoSuspend;
+			///业务单元
+			TThostFtdcBusinessUnitType	BusinessUnit;
+			///请求编号
+			TThostFtdcRequestIDType	RequestID;
+			///本地报单编号
+			TThostFtdcOrderLocalIDType	OrderLocalID;
+			///交易所代码
+			TThostFtdcExchangeIDType	ExchangeID;
+			///会员代码
+			TThostFtdcParticipantIDType	ParticipantID;
+			///客户代码
+			TThostFtdcClientIDType	ClientID;
+			///合约在交易所的代码
+			TThostFtdcExchangeInstIDType	ExchangeInstID;
+			///交易所交易员代码
+			TThostFtdcTraderIDType	TraderID;
+			///安装编号
+			TThostFtdcInstallIDType	InstallID;
+			///报单提交状态
+			TThostFtdcOrderSubmitStatusType	OrderSubmitStatus;
+			///报单提示序号
+			TThostFtdcSequenceNoType	NotifySequence;
+			///交易日
+			TThostFtdcDateType	TradingDay;
+			///结算编号
+			TThostFtdcSettlementIDType	SettlementID;
+			///报单编号
+			TThostFtdcOrderSysIDType	OrderSysID;
+			///报单来源
+			TThostFtdcOrderSourceType	OrderSource;
+			///报单状态
+			TThostFtdcOrderStatusType	OrderStatus;
+			///报单类型
+			TThostFtdcOrderTypeType	OrderType;
+			///今成交数量
+			TThostFtdcVolumeType	VolumeTraded;
+			///剩余数量
+			TThostFtdcVolumeType	VolumeTotal;
+			///报单日期
+			TThostFtdcDateType	InsertDate;
+			///委托时间
+			TThostFtdcTimeType	InsertTime;
+			///激活时间
+			TThostFtdcTimeType	ActiveTime;
+			///挂起时间
+			TThostFtdcTimeType	SuspendTime;
+			///最后修改时间
+			TThostFtdcTimeType	UpdateTime;
+			///撤销时间
+			TThostFtdcTimeType	CancelTime;
+			///最后修改交易所交易员代码
+			TThostFtdcTraderIDType	ActiveTraderID;
+			///结算会员编号
+			TThostFtdcParticipantIDType	ClearingPartID;
+			///序号
+			TThostFtdcSequenceNoType	SequenceNo;
+			///前置编号
+			TThostFtdcFrontIDType	FrontID;
+			///会话编号
+			TThostFtdcSessionIDType	SessionID;
+			///用户端产品信息
+			TThostFtdcProductInfoType	UserProductInfo;
+			///状态信息
+			TThostFtdcErrorMsgType	StatusMsg;
+			///用户强评标志
+			TThostFtdcBoolType	UserForceClose;
+			///操作用户代码
+			TThostFtdcUserIDType	ActiveUserID;
+			///经纪公司报单编号
+			TThostFtdcSequenceNoType	BrokerOrderSeq;
+			///相关报单
+			TThostFtdcOrderSysIDType	RelativeOrderSysID;
+			///郑商所成交数量
+			TThostFtdcVolumeType	ZCETotalTradedVolume;
+			///互换单标志
+			TThostFtdcBoolType	IsSwapOrder;
+			///营业部编号
+			TThostFtdcBranchIDType	BranchID;
+			///投资单元代码
+			TThostFtdcInvestUnitIDType	InvestUnitID;
+			///资金账号
+			TThostFtdcAccountIDType	AccountID;
+			///币种代码
+			TThostFtdcCurrencyIDType	CurrencyID;
+			///IP地址
+			TThostFtdcIPAddressType	IPAddress;
+			///Mac地址
+			TThostFtdcMacAddressType	MacAddress;
+		};
+	2. 其中报单结构体中, 非常重要的一项是 报单状态: 
+		///全部成交
+			#define THOST_FTDC_OST_AllTraded '0'
+		///部分成交还在队列中:
+			#define THOST_FTDC_OST_PartTradedQueueing '1'
+			一部分成交了, 另外一部分, 还在 撮合队列 中, 等待成交
+		///部分成交不在队列中
+			#define THOST_FTDC_OST_PartTradedNotQueueing '2'
+			一部分成交了, 另外一部分, 已经撤单了
+		///未成交还在队列中
+			#define THOST_FTDC_OST_NoTradeQueueing '3'
+			依旧在交易所挂着单
+		///未成交不在队列中
+			#define THOST_FTDC_OST_NoTradeNotQueueing '4'
+			报单发到期货公司的柜台了, 期货公司正在发往交易所的途中
+		///撤单
+			#define THOST_FTDC_OST_Canceled '5'
+		///未知
+			#define THOST_FTDC_OST_Unknown 'a'
+			未知: 一般说, 期货公司的柜台第一次返回的都是未知
+		///尚未触发
+			#define THOST_FTDC_OST_NotTouched 'b'
+			没有达到触发条件, 客户端没有下单
+		///已触发
+			#define THOST_FTDC_OST_Touched 'c' 
+	3. 报单的状态返回是通过回调函数 OnRtnOrder()
+		我们需要实现 OnRtnOrder(), 该函数的作用: 
+			1. 打印报单状态. 一旦订单的状态发生变化, 就会调用回调函数 OnRtnOrder() 
+				状态发生n次变化, 调用n次回调函数 
+				测试: 
+					买进, 回调函数显示 "未成交" 
+					撤单, 回调函数显示 "已撤单"
+					再买进, 调用4次回调函数, 显示"未知"->"未知"->"未成交"->"未成交"
+						会收到2笔未成交, 自己可以测试一下 
+					买进成交,调用5次回调函数, 显示"未知"->"未知"->"未成交"->"未成交"->"全部成交"
+				状态发送过来的顺序 
+					未知 --> (未知) --> 未成交 --> (未成交) --> 已撤单/部分成交/全部成交
+				另外:
+					如果需要测试 部分成交, 则需要活跃的产品
+					你可以试着把手数添加很大, 尝试着显示"部分成交",但是很难,因为一般都显示"全部成交",实盘会更容易看到 
+			2. 打印完之后, 保存报单状态 
+				OnRtnOrder() 中调用 UpdateOrder()
+	4. 我们需要把报单保存 UpdateOrder()
+		1. 记得加锁 
+		2. 会有 brokerid, BrokerOrderSeq: 期货公司会生成 报单序列
+		3. UpdateOrder()的逻辑很简单:
+			1. 如果生成报单序列, 即 BrokerOrderSeq > 0 
+				我们就处理: 
+					1. 如果我们的 map 中已经有了这个报单, 且这个报单不处于终止状态, 就更新它的状态
+						memcpy(pOld, pOrder, sizeof(CThostFtdcOrderField));//更新报单的状态
+							pOld 是map中的报单
+							pOrder 是期货公司传给我们的结构体 
+					2. 如果我们的 map 中没有这个报单, 直接把 pOrder 加入map 
+			2. 如果没有生成报单序列, 即 BrokerOrderSeq == 0 
+				直接返回 false 
+		3. 其中有4个状态是终止状态, 此时就不更新报单了 
+			case THOST_FTDC_OST_AllTraded
+				全部成交
+			case THOST_FTDC_OST_Canceled
+				已撤单
+			case '6':
+				canceling, 是自己定义的, 指的是本程序已经发送了撤单请求, 还在途中
+				针对的情况: 
+					假设柜台将发送给我们2次"未成交"
+					我们接收到第一次"未成交",状态可以从"未知"更新为"未成交"
+					我们在接收到第二次"未成交"之前,发送了"撤单"命令,发送完"撤单",接收到了第二次"未成交"
+						此时,不应该更新了报单. 否则,你撤单却发现状态为"未成交",你会觉得很诡异 
+			case THOST_FTDC_OST_Touched
+				已经触发, 也代表终止 
+	3. 测试:
+	 	买进: 
+	 		调试的时候, 发现2次调用了 OnRtnOrder(), 且  pOrder里面的状态都是"未知" 
+	 	买进成交: 	
+	 		状态: "未知" -> "未成交" -> "未成交" -> "全部成交"{此时再有回调函数也不会更新状态了}
+	 	打印 BrokerOrderSeq: 
+	 		621270
+	 		几次调用回调函数 OnRtnOrder(), 发现 BrokerOrderSeq 都是一样的 
+	 		由此来知道 3次 OnRtnOrder() 都是指同一笔报单 
+	
+
+
+
+
+
 
 
 

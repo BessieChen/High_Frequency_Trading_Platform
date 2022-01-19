@@ -142,8 +142,7 @@ private:
 	//未平仓的空单持仓明细
 	std::vector<CThostFtdcTradeField*> tradeList_NotClosed_Short;
 
-	//持仓合约
-	std::vector<std::string> subscribe_inst_vec;
+	
 	
 	//持仓信息结构体的map
 	std::map<std::string, position_field*> m_position_field_map;
@@ -154,8 +153,10 @@ private:
 
 	//本程序的成交ID集合
 	std::set<std::string>  m_TradeIDs;
+	
 	//本程序的报单集合
 	std::map<int, CThostFtdcOrderField*> m_Orders;
+
 	//map<int, CThostFtdcOrderField*> m_CancelingOrders;
 	double m_CloseProfit;
 	double m_OpenProfit;

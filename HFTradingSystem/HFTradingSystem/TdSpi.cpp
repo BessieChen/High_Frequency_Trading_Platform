@@ -13,6 +13,9 @@ extern Strategy* g_strategy;//策略类指针
 
 extern int g_nRequestID;
 
+//全局的持仓合约
+extern std::vector<std::string> subscribe_inst_vec;
+
 TdSpi::TdSpi(CThostFtdcTraderApi* tdapi, CThostFtdcMdApi* pUserApi_md, MdSpi* pUserSpi_md):
 	m_pUserTDApi_trade(tdapi), m_pUserMDApi_trade(pUserApi_md), m_pUserMDSpi_trade(pUserSpi_md)
 
@@ -618,7 +621,9 @@ void TdSpi::OnRspQryInvestorPosition(CThostFtdcInvestorPositionField* pInvestorP
 	
 }
 
-
+/// <summary>
+/// 查询单个期货合约
+/// </summary>
 void TdSpi::ReqQryInvestorPosition(char * pInstrument)
 {
 	CThostFtdcQryInvestorPositionField req;//创建req
@@ -646,9 +651,6 @@ void TdSpi::ReqQryInstrumetAll()
 	cerr << "--->>> 请求查询合约: " << ((iResult == 0) ? "成功" : "失败") << endl;
 }
 
-/// <summary>
-/// 查询单个期货合约
-/// </summary>
 void TdSpi::ReqQryInstrumet(char * pInstrument)
 {
 	CThostFtdcQryInstrumentField req;//创建req
@@ -715,7 +717,7 @@ void TdSpi::OnRspQryInstrument(CThostFtdcInstrumentField* pInstrument, CThostFtd
 				//将合约信息结构体的map复制到策略类
 				g_strategy->set_instPostion_map_stgy(m_inst_field_map);
 				cerr << "--------------------------输出合约信息map的内容-----------------------" << endl;
-				ShowInstMessage();
+				//ShowInstMessage();
 				//保存全市场合约，在TD进行，需要订阅全市场合约行情时再运行
 				m_pUserMDSpi_trade->set_InstIdList_All(m_Instrument_All);
 				cerr << "TD初始化完成，启动MD" << endl;
@@ -800,6 +802,42 @@ void TdSpi::OnRspQryDepthMarketData(CThostFtdcDepthMarketDataField* pDepthMarket
 
 void TdSpi::OnRtnOrder(CThostFtdcOrderField* pOrder)
 {
+	char* pszStatus = new char[13];
+	switch (pOrder->OrderStatus) {
+	case THOST_FTDC_OST_AllTraded:
+		strcpy(pszStatus, "全部成交");
+		break;
+	case THOST_FTDC_OST_PartTradedQueueing:
+		strcpy(pszStatus, "部分成交");
+		break;
+	case THOST_FTDC_OST_NoTradeQueueing:
+		strcpy(pszStatus, "未成交");
+		break;
+	case THOST_FTDC_OST_Canceled:
+		strcpy(pszStatus, "已撤单");
+		break;
+	case THOST_FTDC_OST_Unknown:
+		strcpy(pszStatus, "未知");
+		break;
+	case THOST_FTDC_OST_NotTouched:
+		strcpy(pszStatus, "未触发");
+		break;
+	case THOST_FTDC_OST_Touched:
+
+		strcpy(pszStatus, "已触发");
+		break;
+	default:
+		strcpy(pszStatus, "");
+		break;
+	}
+
+	/*printf("order returned,ins: %s, vol: %d, price:%f, orderref:%s,requestid:%d,traded vol: %d,ExchID:%s, OrderSysID:%s,status: %s,statusmsg:%s\n"
+		, pOrder->InstrumentID, pOrder->VolumeTotalOriginal, pOrder->LimitPrice, pOrder->OrderRef, pOrder->RequestID
+		, pOrder->VolumeTraded, pOrder->ExchangeID, pOrder->OrderSysID, pszStatus, pOrder->StatusMsg);*/
+	//保存并更新报单的状态
+	UpdateOrder(pOrder);
+	cerr <<"BrokerOrderSeq:"<< pOrder->BrokerOrderSeq<< "  ,OrderRef;" <<pOrder->OrderRef<<" ,报单状态  " << pszStatus << endl;
+
 }
 
 void TdSpi::OnRtnTrade(CThostFtdcTradeField* pTrade)
@@ -831,6 +869,41 @@ CThostFtdcOrderField* TdSpi::GetOrder(int nBrokerOrderSeq)
 
 bool TdSpi::UpdateOrder(CThostFtdcOrderField* pOrder)
 {
+	//经纪公司的下单序列号,大于0表示已经接受报单
+	if (pOrder->BrokerOrderSeq > 0) 
+	{
+		std::lock_guard<std::mutex> m_lock(m_mutex);//加锁，保证这个映射数据的安全
+		//迭代器，查找是否有这个报单
+		map<int, CThostFtdcOrderField*>::iterator it = m_Orders.find(pOrder->BrokerOrderSeq);
+		//如果存在，我们需要更新它的状态
+		if (it != m_Orders.end()) 
+		{
+			CThostFtdcOrderField* pOld = it->second;//把结构体的指针赋值给pOld
+			//原报单已经关闭；
+			char cOldStatus = pOld->OrderStatus;
+			switch (cOldStatus) 
+			{
+			case THOST_FTDC_OST_AllTraded://全部成交
+			case THOST_FTDC_OST_Canceled://已撤单
+			case '6'://canceling//自己定义的，本程序已经发送了撤单请求，还在途中
+			case THOST_FTDC_OST_Touched://已经触发
+				return false;
+			}
+			memcpy(pOld, pOrder, sizeof(CThostFtdcOrderField));//更新报单的状态
+			cerr << "TdSpi::UpdateOrder pOrder->OrderStatus :" << (it->second)->OrderStatus << endl;
+			
+			
+		}
+		//如果不存在，我们需要插入这个报单信息
+		else 
+		{
+			CThostFtdcOrderField* pNew = new CThostFtdcOrderField();
+			memcpy(pNew, pOrder, sizeof(CThostFtdcOrderField));
+			m_Orders.insert(pair<int, CThostFtdcOrderField*>(pNew->BrokerOrderSeq, pNew));
+		}
+		return true;
+	}
+	//否则的话就不用加入到映射
 	return false;
 }
 
