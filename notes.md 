@@ -450,6 +450,14 @@
 						申卖价一, 申卖量一
 						今收盘价, 当日均价{模拟软件中的黄线部分}
 						本次结算价格, 成交金额, 持仓量
+		订阅全部行情: 
+			1. 在 MdSpi::SubscribeMarketData_All() 中实现
+				其实就是调用了 SubscribeMarketData(m_InstIdList_all)
+					其中参数 m_InstIdList_all 是char[], 存储了所有市场上的合约, 用逗号分割所有的合约 
+			2. 常见错误: 
+				1. 如果我们写的合约代码有错: 不会有错误提示
+				2. 重复多次订阅行情: 不会有错误提示, 但是程序执行异常, 即卡在那里
+					因为订阅操作有流量控制, 我们每秒钟不能超过6次调用 SubscribeMarketData("IF2101")
 	技术点: 
 		1. 将char*中以逗号,分割. 每个元素放入 vector<char*>中 
 			void SubscribeMarketData(char* instIdList) 例如 char instIdList[] = "IF2012,IF2101,IF2103"
@@ -519,6 +527,20 @@
 					delete[] ppInst;	->释放new char **
 				}
 					
+			}
+		4. 类中 new 开辟出来的空间, 最后程序结束的时候需要析构掉: 
+			MdSpi::~MdSpi()
+			{
+				if(m_InstIdList_all)
+				delete[] m_InstIdList_all;
+
+				if (m_InstIdList_Position_MD)
+				delete[] m_InstIdList_Position_MD;
+
+				if (loginField)
+					delete loginField;
+				
+
 			}
 
 
